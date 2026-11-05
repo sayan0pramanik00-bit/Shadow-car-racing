@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport"
+content="width=device-width, initial-scale=1.0">
+
+<title>Shadow Racing 2.0</title>
+
+<style>
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: #101820;
+    color: white;
+    font-family: Arial, sans-serif;
+    text-align: center;
+    overflow: hidden;
+}
+
+h1 {
+    color: #00eaff;
+    margin: 10px;
+    font-size: 25px;
+    letter-spacing: 2px;
+}
+
+.game-info {
+    display: flex;
+    justify-content: space-around;
+    padding: 8px;
+    font-weight: bold;
+    font-size: 15px;
+}
+
+canvas {
+    display: block;
+    margin: auto;
+    width: min(100vw, 430px);
+    height: auto;
+    max-height: 72vh;
+    border: 3px solid #00eaff;
+    border-radius: 8px;
+    background: #333;
+}
+
+.controls {
+    display: flex;
+    justify-content: center;
+    gap: 25px;
+    margin-top: 10px;
+}
+
+button {
+    border: none;
+    border-radius: 12px;
+    padding: 13px 27px;
+    font-size: 20px;
+    font-weight: bold;
+    background: #00d9ff;
+    color: #00151d;
+}
+
+button:active {
+    transform: scale(.92);
+}
+
+#restart {
+    background: #ffb000;
+    font-size: 16px;
+    padding: 10px 20px;
+}
+
+</style>
+</head>
+
+<body>
+
+<h1>SHADOW RACING</h1>
+
+<div class="game-info">
+    <span>🏆 SCORE: <span id="score">0</span></span>
+    <span>⚡ SPEED: <span id="speed">0</span></span>
+    <span>BEST: <span id="best">0</span></span>
+</div>
+
+<canvas id="game" width="400" height="700"></canvas>
+
+<div class="controls">
+
+<button id="left">⬅</button>
+
+<button id="right">➡</button>
+
+<button id="pause">⏸</button>
+
+</div>
+
+<br>
+
+<button id="restart">RESTART GAME</button>
+
+<script>
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const W = 400;
+const H = 700;
+
+let score = 0;
+let speed = 5;
+let roadOffset = 0;
+
+let running = false;
+let gameOver = false;
+let lastTime = 0;
+let spawnTimer = 0;
+
+let best = Number(localStorage.getItem("shadowBest")) || 0;
+
+document.getElementById("best").innerText = best;
+
+// ROAD SETTINGS
+
+const road = {
+    x: 55,
+    width: 290
+};
+
+// PLAYER CAR
+
+const player = {
+    x: 177,
+    y: 550,
+    width: 46,
+    height: 88,
+    move: 0
+};
+
+let enemies = [];
+
+const carColors = [
+    "#ff3030",
+    "#ffcc00",
+    "#ffffff",
+    "#a020f0",
+    "#00dd77"
+];
+
+// DRAW ROAD
+
+function drawRoad(dt) {
+
+    // Grass
+
+    ctx.fillStyle = "#287a35";
+    ctx.fillRect(0, 0, W, H);
+
+    // Road
+
+    ctx.fillStyle = "#383838";
+    ctx.fillRect(road.x, 0, road.width, H);
+
+    // Road edges
+
+    ctx.fillStyle = "#eeeeee";
+
+    ctx.fillRect(road.x, 0, 7, H);
+    ctx.fillRect(road.x + road.width - 7, 0, 7, H);
+
+    // Side road markings
+
+    ctx.fillStyle = "#ffcc00";
+
+    for(let y = -50; y < H; y += 100) {
+
+        let pos = (y + roadOffset) % 800;
+
+        ctx.fillRect(road.x + 12, pos, 5, 45);
+
+        ctx.fillRect(road.x + road.width - 17, pos, 5, 45);
+    }
+
+    // Lane markings
+
+    ctx.fillStyle = "white";
+
+    for(let y = -100; y < H; y += 120) {
+
+        let pos = (y + roadOffset) % 800;
+
+        ctx.fillRect(195, pos, 7, 65);
+    }
+
+    // Roadside trees
+
+    for(let y = -100; y < H; y += 150) {
+
+        let pos = (y + roadOffset * 0.7) % 850;
+
+        drawTree(28, pos);
+        drawTree(370, pos + 65);
+    }
+
+    roadOffset += dt * speed * 0.12;
+}
+
+// TREE
+
+function drawTree(x, y) {
+
+    ctx.fillStyle = "#58351b";
+    ctx.fillRect(x - 4, y + 12, 8, 25);
+
+    ctx.fillStyle = "#064d20";
+
+    ctx.beginPath();
+    ctx.arc(x, y, 17, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#168c36";
+
+    ctx.beginPath();
+    ctx.arc(x - 6, y - 5, 9, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+// DRAW CAR
+
+function drawCar(x, y, color, isPlayer = false) {
+
+    ctx.save();
+
+    // Shadow
+
+    ctx.fillStyle = "rgba(0,0,0,0.4)";
+    ctx.fillRect(x + 5, y + 8, 43, 85);
+
+    // Wheels
+
+    ctx.fillStyle = "#080808";
+
+    ctx.fillRect(x - 5, y + 13, 9, 23);
+    ctx.fillRect(x + 42, y + 13, 9, 23);
+
+    ctx.fillRect(x - 5, y + 55, 9, 23);
+    ctx.fillRect(x + 42, y + 55, 9, 23);
+
+    // Main body gradient
+
+    let gradient = ctx.createLinearGradient(x, y, x + 46, y);
+
+    gradient.addColorStop(0, "#444");
+    gradient.addColorStop(0.35, color);
+    gradient.addColorStop(1, "#111");
+
+    ctx.fillStyle = gradient;
+
+    ctx.beginPath();
+
+    ctx.roundRect(x, y, 46, 88, 9);
+
+    ctx.fill();
+
+    // Windows
+
+    ctx.fillStyle = "#102e45";
+
+    ctx.beginPath();
+    ctx.roundRect(x + 7, y + 15, 32, 23, 5);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.roundRect(x + 7, y + 46, 32, 17, 4);
+    ctx.fill();
+
+    // Window reflections
+
+    ctx.strokeStyle = "rgba(255,255,255,0.5)";
+    ctx.lineWidth = 2;
+
+    ctx.beginPath();
+    ctx.moveTo(x + 12, y + 18);
+    ctx.lineTo(x + 25, y + 18);
+    ctx.stroke();
+
+    // Headlights
+
+    ctx.fillStyle = "#fff7b0";
+
+    ctx.fillRect(x + 5, y + 3, 10, 5);
+    ctx.fillRect(x + 31, y + 3, 10, 5);
+
+    // Tail lights
+
+    ctx.fillStyle = "red";
+
+    ctx.fillRect(x + 5, y + 80, 9, 5);
+    ctx.fillRect(x + 32, y + 80, 9, 5);
+
+    // Player glow
+
+    if(isPlayer) {
+
+        ctx.shadowColor = "#00eaff";
+        ctx.shadowBlur = 12;
+
+        ctx.strokeStyle = "#00eaff";
+        ctx.lineWidth = 2;
+
+        ctx.strokeRect(x, y, 46, 88);
+    }
+
+    ctx.restore();
+}
+
+// ENEMY SPAWN
+
+function spawnEnemy() {
+
+    const lanes = [80, 177, 274];
+
+    let lane = lanes[Math.floor(Math.random() * lanes.length)];
+
+    enemies.push({
+        x: lane,
+        y: -100,
+        color: carColors[
+            Math.floor(Math.random() * carColors.length)
+        ]
+    });
+}
+
+// COLLISION
+
+function collision(a, b) {
+
+    return (
+        a.x + 7 < b.x + 39 &&
+        a.x + 39 > b.x + 7 &&
+        a.y + 8 < b.y + 80 &&
+        a.y + 80 > b.y + 8
+    );
+}
+
+// DRAW GAME
+
+function update(dt) {
+
+    if(!running || gameOver) return;
+
+    drawRoad(dt);
+
+    // Player movement
+
+    player.x += player.move * dt * 0.25;
+
+    player.x = Math.max(67, Math.min(287, player.x));
+
+    drawCar(player.x, player.y, "#00cfff", true);
+
+    // Enemy cars
+
+    spawnTimer += dt;
+
+    if(spawnTimer > Math.max(450, 1100 - speed * 60)) {
+
+        spawnEnemy();
+
+        spawnTimer = 0;
+    }
+
+    for(let i = enemies.length - 1; i >= 0; i--) {
+
+        let e = enemies[i];
+
+        e.y += speed * dt * 0.065;
+
+        drawCar(e.x, e.y, e.color);
+
+        if(collision(player, e)) {
+
+            endGame();
+            return;
+        }
+
+        if(e.y > H) {
+
+            enemies.splice(i, 1);
+
+            score += 10;
+
+            speed = Math.min(13, 5 + score / 250);
+
+        }
+    }
+
+    document.getElementById("score").innerText = score;
+
+    document.getElementById("speed").innerText =
+        Math.round(speed * 20) + " km/h";
+
+    if(score > best) {
+
+        best = score;
+
+        localStorage.setItem("shadowBest", best);
+
+        document.getElementById("best").innerText = best;
+    }
+
+}
+
+// GAME OVER
+
+function endGame() {
+
+    gameOver = true;
+    running = false;
+
+    ctx.fillStyle = "rgba(0,0,0,0.75)";
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.textAlign = "center";
+
+    ctx.fillStyle = "#ff3333";
+    ctx.font = "bold 40px Arial";
+
+    ctx.fillText("GAME OVER", 200, 300);
+
+    ctx.fillStyle = "white";
+    ctx.font = "22px Arial";
+
+    ctx.fillText("Score: " + score, 200, 350);
+
+    ctx.font = "17px Arial";
+
+    ctx.fillText("Press RESTART to play again", 200, 400);
+
+}
+
+// GAME LOOP
+
+function loop(time) {
+
+    let dt = Math.min(time - lastTime || 16, 40);
+
+    lastTime = time;
+
+    update(dt);
+
+    requestAnimationFrame(loop);
+}
+
+// CONTROLS
+
+function left() {
+    if(running) player.move = -1;
+}
+
+function right() {
+    if(running) player.move = 1;
+}
+
+function stop() {
+    player.move = 0;
+}
+
+document.getElementById("left").addEventListener("pointerdown", left);
+document.getElementById("right").addEventListener("pointerdown", right);
+
+document.getElementById("left").addEventListener("pointerup", stop);
+document.getElementById("right").addEventListener("pointerup", stop);
+
+document.getElementById("left").addEventListener("pointerleave", stop);
+document.getElementById("right").addEventListener("pointerleave", stop);
+
+document.addEventListener("keydown", e => {
+
+    if(e.key === "ArrowLeft") left();
+    if(e.key === "ArrowRight") right();
+
+});
+
+document.addEventListener("keyup", stop);
+
+// PAUSE
+
+document.getElementById("pause").onclick = function() {
+
+    if(gameOver) return;
+
+    running = !running;
+
+    this.innerText = running ? "⏸" : "▶";
+};
+
+// RESTART
+
+function restart() {
+
+    score = 0;
+    speed = 5;
+
+    enemies = [];
+
+    player.x = 177;
+    player.move = 0;
+
+    roadOffset = 0;
+    spawnTimer = 0;
+
+    gameOver = false;
+    running = true;
+
+    lastTime = performance.now();
+
+    document.getElementById("score").innerText = 0;
+    document.getElementById("speed").innerText = 0;
+    document.getElementById("pause").innerText = "⏸";
+
+}
+
+document.getElementById("restart").onclick = restart;
+
+// START SCREEN
+
+function startScreen() {
+
+    drawRoad(0);
+
+    ctx.fillStyle = "rgba(0,0,0,0.7)";
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.textAlign = "center";
+
+    ctx.fillStyle = "#00eaff";
+    ctx.font = "bold 34px Arial";
+
+    ctx.fillText("SHADOW RACING", 200, 280);
+
+    ctx.fillStyle = "white";
+    ctx.font = "18px Arial";
+
+    ctx.fillText("Your Racing Adventure", 200, 325);
+
+    ctx.fillText("Press START to Play", 200, 390);
+
+}
+
+const startButton = document.createElement("button");
+
+startButton.innerText = "START GAME";
+
+startButton.style.marginTop = "8px";
+
+document.getElementById("restart").before(startButton);
+
+startButton.onclick = function() {
+
+    restart();
+
+    startButton.style.display = "none";
+
+};
+
+startScreen();
+
+requestAnimationFrame(loop);
+
+</script>
+
+</body>
+</html>
