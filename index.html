@@ -74,7 +74,31 @@ button:active {
     font-size: 16px;
     padding: 10px 20px;
 }
+/* MOBILE SCREEN FIX */
+body {
+    overflow-x: hidden;
+    overflow-y: auto;
+    min-height: 100vh;
+    padding-bottom: 20px;
+}
 
+canvas {
+    width: min(88vw, 360px);
+    max-height: 58vh;
+}
+
+.controls {
+    gap: 15px;
+    margin-top: 8px;
+}
+
+button {
+    padding: 11px 22px;
+}
+
+#restart {
+    margin-bottom: 20px;
+    }
 </style>
 </head>
 
